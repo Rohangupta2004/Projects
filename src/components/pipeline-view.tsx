@@ -152,10 +152,13 @@ export function PipelineView() {
 
               <div className="space-y-2 min-h-[100px]">
                 {stageLeads.slice(0, 5).map((l) => (
-                  <button
+                  <div
                     key={l.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => selectLead(l.id)}
-                    className="w-full text-left rounded-lg border border-border bg-card p-3 hover:border-emerald-500/40 hover:shadow-sm transition-all"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectLead(l.id); } }}
+                    className="w-full text-left rounded-lg border border-border bg-card p-3 hover:border-emerald-500/40 hover:shadow-sm transition-all cursor-pointer"
                   >
                     <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="font-medium text-xs truncate flex-1">{l.name}</div>
@@ -181,7 +184,10 @@ export function PipelineView() {
                     )}
 
                     {/* Quick status changer */}
-                    <div className="mt-2 pt-2 border-t border-border">
+                    <div
+                      className="mt-2 pt-2 border-t border-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Select
                         value={l.status}
                         onValueChange={(v) => updateLeadStatus(l.id, v as LeadStatus)}
@@ -196,7 +202,7 @@ export function PipelineView() {
                         </SelectContent>
                       </Select>
                     </div>
-                  </button>
+                  </div>
                 ))}
                 {stageLeads.length > 5 && (
                   <button
