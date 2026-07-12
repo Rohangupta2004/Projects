@@ -54,7 +54,7 @@ export function GenerateLeads() {
   const leads = useStore((s) => s.leads);
   const scrapeError = useStore((s) => s.scrapeError);
   const clearScrapeError = useStore((s) => s.clearScrapeError);
-  const [leadCount, setLeadCount] = useState(8);
+  const [leadCount, setLeadCount] = useState(5);
 
   const states = Object.keys(STATE_CITY);
   const cities = STATE_CITY[filters.state] || [];
@@ -220,7 +220,7 @@ export function GenerateLeads() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate (max 20 per scrape)
+                    Leads to Generate (max 10 per scrape)
                   </label>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
@@ -229,19 +229,19 @@ export function GenerateLeads() {
                     value={[leadCount]}
                     onValueChange={(v) => setLeadCount(v[0])}
                     min={3}
-                    max={20}
+                    max={10}
                     step={1}
                   />
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                   <span>3</span>
+                  <span>5</span>
                   <span>8</span>
-                  <span>15</span>
-                  <span>20</span>
+                  <span>10</span>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                  Each lead requires a separate page visit to fetch phone, reviews, and website.
-                  Larger batches take longer (~3s per lead).
+                  Each lead requires expanding its place panel for phone, reviews, and website.
+                  ~3s per lead — keep batches small for reliability.
                 </p>
               </div>
 
