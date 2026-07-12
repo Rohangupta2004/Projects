@@ -3,8 +3,10 @@
  *
  * Streams real-time scraping progress as Server-Sent Events.
  *
- * Body: { query, city, state, country, count, industry, source }
- *   - source: "google-maps" | "indiamart" | "tradeindia"
+ * Body: { query, city, state, country, count, industry, source, enrichWebsites }
+ *   - source: "google-maps" | "indiamart" | "tradeindia" | "all"
+ *   - enrichWebsites: boolean — if true, fetch each lead's official website
+ *     to extract email + social links + website status
  *
  * Response: SSE stream of { step, pct, count? } events,
  *           ending with { done: true, leads: Lead[] }
@@ -14,6 +16,7 @@ import { ScrapeProgress, ScrapedBusiness } from "@/lib/scraper";
 import {
   scrapeIndiaMART,
   scrapeTradeIndia,
+  enrichWebsite,
   ScrapeProgress as SDProgress,
   ScrapedBusiness as SDBusiness,
 } from "@/lib/scrapers-scrapedo";
@@ -24,11 +27,11 @@ export const runtime = "nodejs";
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
 
-type Source = "google-maps" | "indiamart" | "tradeindia";
+type Source = "google-maps" | "indiamart" | "tradeindia" | "all";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { query, city, state, country, count, industry, source } = body as {
+  const { query, city, state, country, count, industry, source, enrichWebsites } = body as {
     query: string;
     city: string;
     state: string;
@@ -36,6 +39,7 @@ export async function POST(req: NextRequest) {
     count: number;
     industry: Industry | "All";
     source: Source;
+    enrichWebsites?: boolean;
   };
 
   if (!query || !city) {
@@ -62,39 +66,125 @@ export async function POST(req: NextRequest) {
         };
 
         let scraped: (ScrapedBusiness | SDBusiness)[] = [];
-        const safeCount = Math.min(count || 5, source === "google-maps" ? 10 : 30);
 
-        if (source === "google-maps") {
-          // Use the existing Playwright-based scraper
+        if (source === "all") {
+          // Run all three scrapers in parallel with smaller per-source batches
+          const perSource = Math.max(3, Math.ceil((count || 9) / 3));
+          send({
+            type: "progress",
+            step: `Scraping all 3 sources in parallel (${perSource} each = ${perSource * 3} total)…`,
+            pct: 10,
+          });
+
+          const { scrapeGoogleMaps } = await import("@/lib/scraper");
+          const [gm, im, ti] = await Promise.allSettled([
+            scrapeGoogleMaps(query, city, state || "", country || "India", perSource,
+              (p) => send({ type: "progress", step: `[Google Maps] ${p.step}`, pct: 10 + Math.round(p.pct * 0.25) }),
+              abortController.signal),
+            scrapeIndiaMART(query, city, state || "", country || "India", perSource,
+              (p) => send({ type: "progress", step: `[IndiaMART] ${p.step}`, pct: 35 + Math.round(p.pct * 0.25) }),
+              abortController.signal),
+            scrapeTradeIndia(query, city, state || "", country || "India", perSource,
+              (p) => send({ type: "progress", step: `[TradeIndia] ${p.step}`, pct: 60 + Math.round(p.pct * 0.25) }),
+              abortController.signal),
+          ]);
+
+          if (gm.status === "fulfilled") scraped.push(...gm.value);
+          if (im.status === "fulfilled") scraped.push(...im.value);
+          if (ti.status === "fulfilled") scraped.push(...ti.value);
+
+          // Deduplicate by name (case-insensitive)
+          const seen = new Set<string>();
+          scraped = scraped.filter((b) => {
+            const key = b.name.toLowerCase().trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          send({
+            type: "progress",
+            step: `All sources done. Got ${scraped.length} unique businesses.`,
+            pct: 88,
+          });
+        } else if (source === "google-maps") {
           const { scrapeGoogleMaps } = await import("@/lib/scraper");
           scraped = await scrapeGoogleMaps(
             query, city, state || "", country || "India",
-            safeCount, onProgress, abortController.signal
+            Math.min(count || 5, 10), onProgress, abortController.signal
           );
         } else if (source === "indiamart") {
           scraped = await scrapeIndiaMART(
             query, city, state || "", country || "India",
-            safeCount, onProgress, abortController.signal
+            Math.min(count || 10, 30), onProgress, abortController.signal
           );
         } else if (source === "tradeindia") {
           scraped = await scrapeTradeIndia(
             query, city, state || "", country || "India",
-            safeCount, onProgress, abortController.signal
+            Math.min(count || 10, 30), onProgress, abortController.signal
           );
         } else {
           throw new Error(`Unknown source: ${source}`);
         }
 
+        // Enrich leads with AI score, revenue tier, etc.
         send({
           type: "progress",
           step: `Computing AI scores & revenue potential for ${scraped.length} leads…`,
-          pct: 95,
+          pct: enrichWebsites ? 90 : 95,
         });
 
-        // Enrich: compute AI score, revenue tier, stars, status, social activity
-        const leads: Lead[] = scraped.map((b, i) =>
+        let leads: Lead[] = scraped.map((b, i) =>
           enrichLead(b as SDBusiness & { source: DataSource }, industry, i)
         );
+
+        // Optional: enrich each lead with data from their official website
+        if (enrichWebsites && leads.length > 0) {
+          const withSites = leads.filter((l) => l.website);
+          if (withSites.length > 0) {
+            send({
+              type: "progress",
+              step: `Visiting ${withSites.length} official websites for emails & socials…`,
+              pct: 92,
+            });
+
+            // Visit each website (sequentially to avoid rate limits on scrape.do)
+            for (let i = 0; i < withSites.length; i++) {
+              if (abortController.signal.aborted) throw new Error("aborted");
+              const lead = withSites[i];
+              send({
+                type: "progress",
+                step: `Enriching ${i + 1}/${withSites.length}: ${lead.name.slice(0, 30)} → ${lead.website?.slice(0, 40)}…`,
+                pct: 92 + Math.round(((i + 1) / withSites.length) * 6),
+              });
+
+              try {
+                const enrichment = await enrichWebsite(lead.website!);
+                // Apply enrichment to the lead (in the leads array)
+                leads = leads.map((l) => {
+                  if (l.id !== lead.id) return l;
+                  return {
+                    ...l,
+                    email: enrichment.email || l.email,
+                    facebook: enrichment.facebook || l.facebook,
+                    instagram: enrichment.instagram || l.instagram,
+                    linkedin: enrichment.linkedin || l.linkedin,
+                    websiteStatus: enrichment.websiteStatus,
+                    websiteScore: enrichment.websiteScore,
+                  };
+                });
+              } catch {
+                // Skip on error
+              }
+            }
+
+            send({
+              type: "progress",
+              step: `Website enrichment complete.`,
+              pct: 98,
+            });
+          }
+        }
 
         send({ type: "done", leads, count: leads.length });
       } catch (err: any) {

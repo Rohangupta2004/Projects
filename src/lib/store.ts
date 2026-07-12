@@ -15,9 +15,13 @@ interface LeadForgeState {
   addLeads: (leads: Lead[]) => void;
 
   // Generate flow
-  filters: GenerateFilters & { source: "google-maps" | "indiamart" | "tradeindia" };
+  filters: GenerateFilters & {
+    source: "google-maps" | "indiamart" | "tradeindia" | "all";
+    enrichWebsites: boolean;
+  };
   setFilter: <K extends keyof GenerateFilters>(key: K, value: GenerateFilters[K]) => void;
-  setSource: (s: "google-maps" | "indiamart" | "tradeindia") => void;
+  setSource: (s: "google-maps" | "indiamart" | "tradeindia" | "all") => void;
+  setEnrichWebsites: (v: boolean) => void;
   isGenerating: boolean;
   generateProgress: number;
   generateLog: string[];
@@ -68,11 +72,14 @@ export const useStore = create<LeadForgeState>((set, get) => ({
     state: "Maharashtra",
     city: "Mumbai",
     source: "indiamart",
+    enrichWebsites: false,
   },
   setFilter: (key, value) =>
     set((s) => ({ filters: { ...s.filters, [key]: value } })),
   setSource: (src) =>
     set((s) => ({ filters: { ...s.filters, source: src } })),
+  setEnrichWebsites: (v) =>
+    set((s) => ({ filters: { ...s.filters, enrichWebsites: v } })),
 
   isGenerating: false,
   generateProgress: 0,
@@ -100,6 +107,7 @@ export const useStore = create<LeadForgeState>((set, get) => ({
           count,
           industry: filters.industry,
           source: filters.source,
+          enrichWebsites: filters.enrichWebsites,
         }),
       });
 
@@ -131,7 +139,9 @@ export const useStore = create<LeadForgeState>((set, get) => ({
                 generateProgress: evt.pct,
               }));
             } else if (evt.type === "done") {
-              const sourceLabel = filters.source === "google-maps" ? "Google Maps"
+              const sourceLabel =
+                filters.source === "all" ? "all sources"
+                : filters.source === "google-maps" ? "Google Maps"
                 : filters.source === "indiamart" ? "IndiaMART"
                 : "TradeIndia";
               set((s) => ({

@@ -221,11 +221,12 @@ export function GenerateLeads() {
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                   <Database className="size-3.5" /> Data Source
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {[
-                    { key: "indiamart" as const, label: "IndiaMART", desc: "B2B suppliers · scrape.do proxy", icon: "🏭" },
-                    { key: "google-maps" as const, label: "Google Maps", desc: "Local businesses · Playwright", icon: "📍" },
-                    { key: "tradeindia" as const, label: "TradeIndia", desc: "B2B directory · scrape.do proxy", icon: "📦" },
+                    { key: "all" as const, label: "All Sources", desc: "Run all 3 in parallel", icon: "⚡" },
+                    { key: "indiamart" as const, label: "IndiaMART", desc: "B2B suppliers · scrape.do", icon: "🏭" },
+                    { key: "google-maps" as const, label: "Google Maps", desc: "Local · Playwright", icon: "📍" },
+                    { key: "tradeindia" as const, label: "TradeIndia", desc: "B2B · scrape.do", icon: "📦" },
                   ].map((s) => (
                     <button
                       key={s.key}
@@ -247,11 +248,35 @@ export function GenerateLeads() {
                 </div>
               </div>
 
+              {/* Website enrichment toggle */}
+              <div className="rounded-lg border border-border p-3 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="enrich-websites"
+                  checked={filters.enrichWebsites}
+                  onChange={(e) => useStore.getState().setEnrichWebsites(e.target.checked)}
+                  disabled={isGenerating}
+                  className="mt-0.5 size-4 rounded border-border accent-emerald-600"
+                />
+                <label htmlFor="enrich-websites" className="flex-1 cursor-pointer">
+                  <div className="text-xs font-semibold flex items-center gap-1.5">
+                    <Globe className="size-3.5 text-emerald-500" />
+                    Scrape official websites for emails & socials
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                    For each lead that has a website URL, also visit the official site to extract
+                    email addresses, Facebook/Instagram/LinkedIn/Twitter links, and a real
+                    website quality score (Speed/Design/SEO/Mobile). Costs ~1 scrape.do credit
+                    per site visited. Adds ~3s per lead.
+                  </div>
+                </label>
+              </div>
+
               {/* Quantity slider */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate {filters.source === "google-maps" ? "(max 10)" : "(max 30)"}
+                    Leads to Generate {filters.source === "google-maps" ? "(max 10)" : filters.source === "all" ? "(max 30)" : "(max 30)"}
                   </label>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
@@ -272,8 +297,12 @@ export function GenerateLeads() {
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
                   {filters.source === "google-maps"
-                    ? "Each lead requires expanding its place panel for phone, reviews, and website. ~3s per lead."
-                    : "scrape.do fetches HTML directly (no per-lead browser visits). ~5s total for the whole batch."}
+                    ? "Each lead requires expanding its place panel. ~3s per lead."
+                    : filters.source === "all"
+                    ? "Runs IndiaMART + Google Maps + TradeIndia in parallel. ~15-25s total."
+                    : filters.enrichWebsites
+                    ? "scrape.do fetches the search page, then visits each lead's official website. ~3s per lead."
+                    : "scrape.do fetches HTML directly. ~5s total for the whole batch."}
                 </p>
               </div>
 

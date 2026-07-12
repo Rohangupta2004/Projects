@@ -303,3 +303,175 @@ function parseTradeIndiaHtml(
 
   return businesses;
 }
+
+// ---------------- Website enrichment ----------------
+
+export interface WebsiteEnrichment {
+  email: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  linkedin: string | null;
+  twitter: string | null;
+  websiteStatus: "modern" | "old" | "broken" | "none";
+  websiteScore: {
+    speed: number;
+    design: number;
+    seo: number;
+    mobile: number;
+    overall: number;
+  } | null;
+}
+
+/**
+ * Fetch a business's official website via scrape.do and extract:
+ *   - Email address (from mailto: links or text patterns)
+ *   - Social media profile links (Facebook, Instagram, LinkedIn, Twitter)
+ *   - Website status (modern/old/broken based on HTML signals)
+ *   - Basic website score (heuristic)
+ */
+export async function enrichWebsite(
+  websiteUrl: string,
+  onProgress?: (msg: string) => void
+): Promise<WebsiteEnrichment> {
+  const result: WebsiteEnrichment = {
+    email: null,
+    facebook: null,
+    instagram: null,
+    linkedin: null,
+    twitter: null,
+    websiteStatus: "modern",
+    websiteScore: null,
+  };
+
+  if (!websiteUrl || !websiteUrl.startsWith("http")) {
+    result.websiteStatus = "none";
+    return result;
+  }
+
+  onProgress?.(`Fetching ${websiteUrl.slice(0, 50)}…`);
+  let html: string;
+  try {
+    html = await scrapeDoFetch(websiteUrl);
+    if (!html || html.length < 200) {
+      result.websiteStatus = "broken";
+      return result;
+    }
+  } catch {
+    result.websiteStatus = "broken";
+    return result;
+  }
+
+  // Extract email from mailto: links first (most reliable)
+  const mailtoMatch = html.match(/mailto:([^"'?>\s]+@[^"'?>\s]+\.[^"'?>\s]+)/i);
+  if (mailtoMatch) {
+    result.email = mailtoMatch[1].trim();
+  }
+
+  // Fallback: regex for email patterns in text
+  if (!result.email) {
+    const emailMatch = html.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+    if (emailMatch) {
+      const e = emailMatch[1];
+      if (!e.match(/^(example|test|user|email|sentry|noreply)@/i) &&
+          !e.includes("sentry.io") &&
+          !e.includes("wixpress") &&
+          !e.includes(".png") && !e.includes(".jpg")) {
+        result.email = e;
+      }
+    }
+  }
+
+  // Extract social media profile links
+  const linkRegex = /<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+  let m;
+  const socialsFound: Record<string, string | null> = {
+    facebook: null,
+    instagram: null,
+    linkedin: null,
+    twitter: null,
+  };
+  while ((m = linkRegex.exec(html)) !== null) {
+    const href = m[1].toLowerCase();
+    if (!socialsFound.facebook && href.includes("facebook.com/")) {
+      const fbMatch = m[1].match(/facebook\.com\/([^/?"'#]+)/i);
+      if (fbMatch && !["sharer", "plugins", "dialog", "tr"].includes(fbMatch[1].toLowerCase())) {
+        socialsFound.facebook = m[1].split("?")[0];
+      }
+    }
+    if (!socialsFound.instagram && href.includes("instagram.com/")) {
+      const igMatch = m[1].match(/instagram\.com\/([^/?"'#]+)/i);
+      if (igMatch && !["p", "reel", "explore", "accounts"].includes(igMatch[1].toLowerCase())) {
+        socialsFound.instagram = m[1].split("?")[0];
+      }
+    }
+    if (!socialsFound.linkedin && href.includes("linkedin.com/")) {
+      const liMatch = m[1].match(/linkedin\.com\/(company\/[^/?"'#]+)/i);
+      if (liMatch) {
+        socialsFound.linkedin = m[1].split("?")[0];
+      } else {
+        const inMatch = m[1].match(/linkedin\.com\/(in\/[^/?"'#]+)/i);
+        if (inMatch) socialsFound.linkedin = m[1].split("?")[0];
+      }
+    }
+    if (!socialsFound.twitter && (href.includes("twitter.com/") || href.includes("x.com/"))) {
+      const twMatch = m[1].match(/(?:twitter|x)\.com\/([^/?"'#]+)/i);
+      if (twMatch && !["share", "intent", "home"].includes(twMatch[1].toLowerCase())) {
+        socialsFound.twitter = m[1].split("?")[0];
+      }
+    }
+  }
+  result.facebook = socialsFound.facebook;
+  result.instagram = socialsFound.instagram;
+  result.linkedin = socialsFound.linkedin;
+  result.twitter = socialsFound.twitter;
+
+  // Determine website status from HTML signals
+  const htmlLower = html.toLowerCase();
+  let modernSignals = 0;
+  let oldSignals = 0;
+
+  if (htmlLower.includes("viewport")) modernSignals++;
+  if (htmlLower.includes('lang="') || htmlLower.includes("lang='")) modernSignals++;
+  if (htmlLower.includes("react") || htmlLower.includes("vue") || htmlLower.includes("next.js") || htmlLower.includes("_next")) modernSignals++;
+  if (htmlLower.includes("https://")) modernSignals++;
+  if (htmlLower.includes("og:")) modernSignals++;
+  if (htmlLower.includes('name="description"')) modernSignals++;
+  if (html.length > 20000) modernSignals++;
+
+  const tableCount = (htmlLower.match(/<table/g) || []).length;
+  if (tableCount > 5) oldSignals++;
+  if (htmlLower.includes("<font ")) oldSignals++;
+  if (htmlLower.includes("frameset") || htmlLower.includes("<frame ")) oldSignals++;
+  if (htmlLower.includes("iso-8859")) oldSignals++;
+  if (htmlLower.includes("<marquee") || htmlLower.includes("<blink")) oldSignals++;
+  if (!htmlLower.includes("viewport")) oldSignals++;
+
+  if (modernSignals >= 3 && oldSignals <= 1) {
+    result.websiteStatus = "modern";
+  } else if (oldSignals >= 3) {
+    result.websiteStatus = "old";
+  } else {
+    result.websiteStatus = "modern";
+  }
+
+  // Compute a basic website score
+  const speed = Math.min(100, 40 + modernSignals * 8 - oldSignals * 10);
+  const design = Math.min(100, 35 + modernSignals * 10 - oldSignals * 12);
+  const seo = (htmlLower.includes("<title>") ? 25 : 0) +
+              (htmlLower.includes('name="description"') ? 25 : 0) +
+              (htmlLower.includes("<h1") ? 20 : 0) +
+              (htmlLower.includes("og:") ? 15 : 0) +
+              (htmlLower.includes("canonical") ? 15 : 0);
+  const mobile = htmlLower.includes("viewport") ? Math.min(100, 75 + modernSignals * 3) : 25;
+  const overall = Math.round(speed * 0.25 + design * 0.25 + seo * 0.25 + mobile * 0.25);
+
+  result.websiteScore = {
+    speed: Math.max(5, Math.min(100, speed)),
+    design: Math.max(5, Math.min(100, design)),
+    seo: Math.max(5, Math.min(100, seo)),
+    mobile: Math.max(5, Math.min(100, mobile)),
+    overall: Math.max(5, Math.min(100, overall)),
+  };
+
+  return result;
+}
