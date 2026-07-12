@@ -15,8 +15,9 @@ interface LeadForgeState {
   addLeads: (leads: Lead[]) => void;
 
   // Generate flow
-  filters: GenerateFilters;
+  filters: GenerateFilters & { source: "google-maps" | "indiamart" | "tradeindia" };
   setFilter: <K extends keyof GenerateFilters>(key: K, value: GenerateFilters[K]) => void;
+  setSource: (s: "google-maps" | "indiamart" | "tradeindia") => void;
   isGenerating: boolean;
   generateProgress: number;
   generateLog: string[];
@@ -66,9 +67,12 @@ export const useStore = create<LeadForgeState>((set, get) => ({
     country: "India",
     state: "Maharashtra",
     city: "Mumbai",
+    source: "indiamart",
   },
   setFilter: (key, value) =>
     set((s) => ({ filters: { ...s.filters, [key]: value } })),
+  setSource: (src) =>
+    set((s) => ({ filters: { ...s.filters, source: src } })),
 
   isGenerating: false,
   generateProgress: 0,
@@ -95,6 +99,7 @@ export const useStore = create<LeadForgeState>((set, get) => ({
           country: filters.country,
           count,
           industry: filters.industry,
+          source: filters.source,
         }),
       });
 
@@ -126,6 +131,9 @@ export const useStore = create<LeadForgeState>((set, get) => ({
                 generateProgress: evt.pct,
               }));
             } else if (evt.type === "done") {
+              const sourceLabel = filters.source === "google-maps" ? "Google Maps"
+                : filters.source === "indiamart" ? "IndiaMART"
+                : "TradeIndia";
               set((s) => ({
                 leads: [...evt.leads, ...s.leads],
                 isGenerating: false,
@@ -133,7 +141,7 @@ export const useStore = create<LeadForgeState>((set, get) => ({
                 view: "leads",
                 generateLog: [
                   ...s.generateLog,
-                  `✓ Done. Added ${evt.leads.length} real leads from Google Maps.`,
+                  `✓ Done. Added ${evt.leads.length} real leads from ${sourceLabel}.`,
                 ],
               }));
             } else if (evt.type === "error") {

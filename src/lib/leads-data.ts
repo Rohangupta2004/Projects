@@ -244,7 +244,7 @@ export function enrichLead(
     googleRating: b.rating,
     reviews: b.reviews,
     lastUpdated: new Date().toISOString(),
-    source: "Google Maps",
+    source: b.source,        // preserve the actual source (Google Maps / IndiaMART / TradeIndia)
     status: "New",
     aiScore: ai.score,
     aiReason: ai.reason,

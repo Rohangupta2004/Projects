@@ -121,10 +121,10 @@ export default function Home() {
                 Data Sources
               </div>
               {[
+                { name: "IndiaMART", live: true },
                 { name: "Google Maps", live: true },
-                { name: "IndiaMART", live: false },
+                { name: "TradeIndia", live: true },
                 { name: "Justdial", live: false },
-                { name: "TradeIndia", live: false },
                 { name: "ExportersIndia", live: false },
                 { name: "MSME Directory", live: false },
               ].map((s) => (
@@ -216,7 +216,7 @@ export default function Home() {
           <div className="hidden md:flex items-center gap-2 text-xs">
             <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">
               <span className="size-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-              Playwright live
+              3 sources live
             </Badge>
           </div>
 

@@ -54,7 +54,7 @@ export function GenerateLeads() {
   const leads = useStore((s) => s.leads);
   const scrapeError = useStore((s) => s.scrapeError);
   const clearScrapeError = useStore((s) => s.clearScrapeError);
-  const [leadCount, setLeadCount] = useState(5);
+  const [leadCount, setLeadCount] = useState(10);
 
   const states = Object.keys(STATE_CITY);
   const cities = STATE_CITY[filters.state] || [];
@@ -216,11 +216,42 @@ export function GenerateLeads() {
                 ))}
               </div>
 
+              {/* Source picker */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <Database className="size-3.5" /> Data Source
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: "indiamart" as const, label: "IndiaMART", desc: "B2B suppliers · scrape.do proxy", icon: "🏭" },
+                    { key: "google-maps" as const, label: "Google Maps", desc: "Local businesses · Playwright", icon: "📍" },
+                    { key: "tradeindia" as const, label: "TradeIndia", desc: "B2B directory · scrape.do proxy", icon: "📦" },
+                  ].map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      disabled={isGenerating}
+                      onClick={() => useStore.getState().setSource(s.key)}
+                      className={cn(
+                        "rounded-lg border p-3 text-left transition-all disabled:opacity-50",
+                        filters.source === s.key
+                          ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30"
+                          : "border-border hover:border-emerald-500/40 hover:bg-muted/40"
+                      )}
+                    >
+                      <div className="text-base mb-0.5">{s.icon}</div>
+                      <div className="font-semibold text-xs">{s.label}</div>
+                      <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Quantity slider */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate (max 10 per scrape)
+                    Leads to Generate {filters.source === "google-maps" ? "(max 10)" : "(max 30)"}
                   </label>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
@@ -229,19 +260,20 @@ export function GenerateLeads() {
                     value={[leadCount]}
                     onValueChange={(v) => setLeadCount(v[0])}
                     min={3}
-                    max={10}
+                    max={filters.source === "google-maps" ? 10 : 30}
                     step={1}
                   />
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                   <span>3</span>
                   <span>5</span>
-                  <span>8</span>
-                  <span>10</span>
+                  {filters.source === "google-maps" ? <span>8</span> : <span>15</span>}
+                  {filters.source === "google-maps" ? <span>10</span> : <span>30</span>}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-                  Each lead requires expanding its place panel for phone, reviews, and website.
-                  ~3s per lead — keep batches small for reliability.
+                  {filters.source === "google-maps"
+                    ? "Each lead requires expanding its place panel for phone, reviews, and website. ~3s per lead."
+                    : "scrape.do fetches HTML directly (no per-lead browser visits). ~5s total for the whole batch."}
                 </p>
               </div>
 
