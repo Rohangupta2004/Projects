@@ -54,7 +54,7 @@ export function GenerateLeads() {
   const leads = useStore((s) => s.leads);
   const scrapeError = useStore((s) => s.scrapeError);
   const clearScrapeError = useStore((s) => s.clearScrapeError);
-  const [leadCount, setLeadCount] = useState(15);
+  const [leadCount, setLeadCount] = useState(8);
 
   const states = Object.keys(STATE_CITY);
   const cities = STATE_CITY[filters.state] || [];
@@ -87,11 +87,18 @@ export function GenerateLeads() {
           <AlertCircle className="size-5 text-rose-500 shrink-0 mt-0.5" />
           <div className="flex-1">
             <div className="font-semibold text-sm text-rose-700 dark:text-rose-400">Scraping failed</div>
-            <div className="text-xs text-muted-foreground mt-1">{scrapeError}</div>
-            <div className="text-xs text-muted-foreground mt-2">
-              Common causes: Google rate-limited the sandbox IP, the city/industry had no results,
-              or the headless browser timed out. Try a smaller batch or wait a minute and retry.
+            <div className="text-xs text-foreground mt-1 font-mono bg-rose-500/5 px-2 py-1 rounded">
+              {scrapeError}
             </div>
+            <div className="text-xs text-muted-foreground mt-2 leading-relaxed">
+              <strong>Try these:</strong>
+            </div>
+            <ul className="text-xs text-muted-foreground mt-1 space-y-1 list-disc list-inside">
+              <li>Reduce batch size (3-8 leads works most reliably)</li>
+              <li>Wait 30-60 seconds and retry — Google rate-limits aggressive scraping</li>
+              <li>Try a different city or industry</li>
+              <li>If it keeps failing, the sandbox IP may be temporarily blocked — try again in a few minutes</li>
+            </ul>
           </div>
           <Button variant="ghost" size="sm" onClick={clearScrapeError}>Dismiss</Button>
         </div>
@@ -213,7 +220,7 @@ export function GenerateLeads() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate (max 30 per scrape)
+                    Leads to Generate (max 20 per scrape)
                   </label>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
@@ -221,17 +228,21 @@ export function GenerateLeads() {
                   <Slider
                     value={[leadCount]}
                     onValueChange={(v) => setLeadCount(v[0])}
-                    min={5}
-                    max={30}
-                    step={5}
+                    min={3}
+                    max={20}
+                    step={1}
                   />
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                  <span>5</span>
+                  <span>3</span>
+                  <span>8</span>
                   <span>15</span>
-                  <span>25</span>
-                  <span>30</span>
+                  <span>20</span>
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                  Each lead requires a separate page visit to fetch phone, reviews, and website.
+                  Larger batches take longer (~3s per lead).
+                </p>
               </div>
 
               <Button

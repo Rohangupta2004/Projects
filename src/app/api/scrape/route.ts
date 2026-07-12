@@ -13,7 +13,7 @@ import { enrichLead, Lead } from "@/lib/leads-data";
 import type { Industry } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 min — Playwright needs time
+export const maxDuration = 600; // 10 min — Playwright + per-place visits need time
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
           city,
           state || "",
           country || "India",
-          Math.min(count || 15, 30),
+          Math.min(count || 8, 20),
           onProgress,
           abortController.signal
         );
@@ -74,10 +74,18 @@ export async function POST(req: NextRequest) {
         send({ type: "done", leads, count: leads.length });
       } catch (err: any) {
         console.error("[/api/scrape] error:", err);
-        send({
-          type: "error",
-          message: err?.message || "Scraping failed",
-        });
+        // Translate common Playwright errors to user-friendly messages
+        let message = err?.message || "Scraping failed";
+        if (message.includes("Target closed") || message.includes("Browser closed")) {
+          message = "Headless browser crashed. Try again with a smaller batch.";
+        } else if (message.includes("Timeout") || message.includes("timeout")) {
+          message = "Scraping timed out (Google Maps took too long to load). Try again with fewer leads.";
+        } else if (message.includes("net::ERR") || message.includes("ECONNRESET")) {
+          message = "Network error reaching Google Maps. Please retry in a minute.";
+        } else if (message.includes("aborted")) {
+          message = "Scraping was cancelled.";
+        }
+        send({ type: "error", message });
       } finally {
         controller.close();
       }
