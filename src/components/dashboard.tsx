@@ -119,7 +119,7 @@ export function Dashboard() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            AI-powered lead generation across IndiaMART, Justdial, TradeIndia & more.
+            AI-powered lead generation — real Playwright scraping of Google Maps + heuristics-based scoring.
           </p>
         </div>
         <div className="flex items-center gap-2">

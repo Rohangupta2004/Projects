@@ -120,10 +120,34 @@ export default function Home() {
               <div className="px-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
                 Data Sources
               </div>
-              {["IndiaMART", "Justdial", "TradeIndia", "ExportersIndia", "Google Maps", "MSME Directory"].map((s) => (
-                <div key={s} className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {s}
+              {[
+                { name: "Google Maps", live: true },
+                { name: "IndiaMART", live: false },
+                { name: "Justdial", live: false },
+                { name: "TradeIndia", live: false },
+                { name: "ExportersIndia", live: false },
+                { name: "MSME Directory", live: false },
+              ].map((s) => (
+                <div
+                  key={s.name}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 text-xs",
+                    s.live ? "text-foreground" : "text-muted-foreground/60"
+                  )}
+                  title={s.live ? "Live — actively scraped" : "Blocked by datacenter IP (Cloudflare)"}
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      s.live ? "bg-emerald-500 animate-pulse" : "bg-slate-400 dark:bg-slate-600"
+                    )}
+                  />
+                  {s.name}
+                  {s.live && (
+                    <span className="ml-auto text-[9px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Live
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -192,7 +216,7 @@ export default function Home() {
           <div className="hidden md:flex items-center gap-2 text-xs">
             <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">
               <span className="size-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-              6 scrapers online
+              Playwright live
             </Badge>
           </div>
 

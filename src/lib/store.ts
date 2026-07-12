@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { GenerateFilters, Lead, LeadStatus, ViewKey } from "./types";
-import { generateLeads, seedLeads, INDUSTRIES } from "./leads-data";
+import type { GenerateFilters, Lead, LeadStatus, ViewKey, Industry } from "./types";
+import { generateLeads, seedLeads, INDUSTRIES, industryToQuery } from "./leads-data";
 
 interface LeadForgeState {
   // Navigation
@@ -20,7 +20,11 @@ interface LeadForgeState {
   isGenerating: boolean;
   generateProgress: number;
   generateLog: string[];
-  runGenerate: (count: number) => void;
+  runGenerate: (count: number) => Promise<void>;
+  useRealScraper: boolean;
+  setUseRealScraper: (v: boolean) => void;
+  scrapeError: string | null;
+  clearScrapeError: () => void;
 
   // Lead list filters
   search: string;
@@ -42,8 +46,6 @@ interface LeadForgeState {
   page: number;
   setPage: (p: number) => void;
 }
-
-import type { Industry } from "./types";
 
 export const useStore = create<LeadForgeState>((set, get) => ({
   view: "dashboard",
@@ -72,44 +74,131 @@ export const useStore = create<LeadForgeState>((set, get) => ({
   isGenerating: false,
   generateProgress: 0,
   generateLog: [],
-  runGenerate: (count) => {
+  useRealScraper: true,
+  setUseRealScraper: (v) => set({ useRealScraper: v }),
+  scrapeError: null,
+  clearScrapeError: () => set({ scrapeError: null }),
+
+  runGenerate: async (count) => {
     if (get().isGenerating) return;
-    const { filters } = get();
-    set({ isGenerating: true, generateProgress: 0, generateLog: [] });
+    const { filters, useRealScraper } = get();
+    set({ isGenerating: true, generateProgress: 0, generateLog: [], scrapeError: null });
 
-    const steps = [
-      `Connecting to IndiaMART, Justdial, TradeIndia & ExportersIndia…`,
-      `Scraping ${filters.city}, ${filters.state} (${filters.industry === "All" ? "all industries" : filters.industry})…`,
-      `Resolving phone numbers & emails…`,
-      `Checking websites & social profiles…`,
-      `AI visiting websites & scoring design, speed, SEO, mobile…`,
-      `Pulling Google reviews & ratings…`,
-      `Computing AI priority & Revenue Potential Score…`,
-      `Deduplicating against existing ${get().leads.length} leads…`,
-    ];
+    if (!useRealScraper) {
+      // Fallback: mock generator (offline / dev mode)
+      const steps = [
+        `Connecting to IndiaMART, Justdial, TradeIndia & ExportersIndia…`,
+        `Scraping ${filters.city}, ${filters.state} (${filters.industry === "All" ? "all industries" : filters.industry})…`,
+        `Resolving phone numbers & emails…`,
+        `Checking websites & social profiles…`,
+        `AI visiting websites & scoring design, speed, SEO, mobile…`,
+        `Pulling Google reviews & ratings…`,
+        `Computing AI priority & Revenue Potential Score…`,
+        `Deduplicating against existing ${get().leads.length} leads…`,
+      ];
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < steps.length) {
+          set((s) => ({
+            generateLog: [...s.generateLog, steps[i]],
+            generateProgress: Math.round(((i + 1) / steps.length) * 100),
+          }));
+          i++;
+        } else {
+          clearInterval(interval);
+          const newLeads = generateLeads(
+            filters.industry,
+            filters.country,
+            filters.state,
+            filters.city,
+            count
+          );
+          set((s) => ({
+            leads: [...newLeads, ...s.leads],
+            isGenerating: false,
+            generateProgress: 100,
+            view: "leads",
+          }));
+        }
+      }, 480);
+      return;
+    }
 
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < steps.length) {
-        set((s) => ({ generateLog: [...s.generateLog, steps[i]], generateProgress: Math.round(((i + 1) / steps.length) * 100) }));
-        i++;
-      } else {
-        clearInterval(interval);
-        const newLeads = generateLeads(
-          filters.industry,
-          filters.country,
-          filters.state,
-          filters.city,
-          count
-        );
-        set((s) => ({
-          leads: [...newLeads, ...s.leads],
-          isGenerating: false,
-          generateProgress: 100,
-          view: "leads",
-        }));
+    // Real scraper: stream SSE from /api/scrape
+    const query = industryToQuery(filters.industry);
+
+    try {
+      const resp = await fetch("/api/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          city: filters.city,
+          state: filters.state,
+          country: filters.country,
+          count,
+          industry: filters.industry,
+        }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        throw new Error(`HTTP ${resp.status}`);
       }
-    }, 480);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE events (separated by \n\n)
+        let idx;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const rawEvent = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const dataLine = rawEvent.split("\n").find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          try {
+            const evt = JSON.parse(dataLine.slice(5).trim());
+            if (evt.type === "progress") {
+              set((s) => ({
+                generateLog: [...s.generateLog, evt.step],
+                generateProgress: evt.pct,
+              }));
+            } else if (evt.type === "done") {
+              set((s) => ({
+                leads: [...evt.leads, ...s.leads],
+                isGenerating: false,
+                generateProgress: 100,
+                view: "leads",
+                generateLog: [
+                  ...s.generateLog,
+                  `✓ Done. Added ${evt.leads.length} real leads from Google Maps.`,
+                ],
+              }));
+            } else if (evt.type === "error") {
+              set((s) => ({
+                isGenerating: false,
+                scrapeError: evt.message,
+                generateLog: [...s.generateLog, `✗ Error: ${evt.message}`],
+              }));
+              return;
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+    } catch (err: any) {
+      set((s) => ({
+        isGenerating: false,
+        scrapeError: err?.message || "Network error",
+        generateLog: [...s.generateLog, `✗ Network error: ${err?.message}`],
+      }));
+    }
   },
 
   search: "",

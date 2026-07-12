@@ -98,7 +98,7 @@ export function LeadsView() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Leads Database</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {filtered.length} of {leads.length} businesses · scraped from 6 Indian directories
+            {filtered.length} of {leads.length} businesses · live-scraped via Playwright + seeded mock data
           </p>
         </div>
         <Button onClick={() => setView("generate")} className="bg-emerald-600 hover:bg-emerald-700">

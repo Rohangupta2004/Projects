@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { STATE_CITY, INDUSTRIES, COUNTRIES } from "@/lib/leads-data";
 import {
@@ -37,9 +38,12 @@ import {
   FileText,
   Sparkles,
   ArrowRight,
+  AlertCircle,
+  MapPinned,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 
 export function GenerateLeads() {
   const filters = useStore((s) => s.filters);
@@ -49,6 +53,11 @@ export function GenerateLeads() {
   const generateLog = useStore((s) => s.generateLog);
   const runGenerate = useStore((s) => s.runGenerate);
   const leads = useStore((s) => s.leads);
+  const useRealScraper = useStore((s) => s.useRealScraper);
+  const setUseRealScraper = useStore((s) => s.setUseRealScraper);
+  const scrapeError = useStore((s) => s.scrapeError);
+  const clearScrapeError = useStore((s) => s.clearScrapeError);
+  const [leadCount, setLeadCount] = useState(20);
 
   const states = Object.keys(STATE_CITY);
   const cities = STATE_CITY[filters.state] || [];
@@ -62,13 +71,45 @@ export function GenerateLeads() {
 
   return (
     <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Generate Leads</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Pick your target segment — our scrapers pull fresh businesses from 6 Indian directories,
-          then AI scores each one for website opportunity.
-        </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Generate Leads</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Pick your target segment — Playwright launches a real headless browser to scrape Google Maps,
+            then AI scores each business for website opportunity.
+          </p>
+        </div>
+        {/* Real / Mock toggle */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card">
+          <span className={cn("text-xs font-medium", !useRealScraper && "text-muted-foreground")}>
+            Mock data
+          </span>
+          <Switch
+            checked={useRealScraper}
+            onCheckedChange={setUseRealScraper}
+            disabled={isGenerating}
+          />
+          <span className={cn("text-xs font-medium flex items-center gap-1", useRealScraper ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+            <MapPinned className="size-3" /> Real scraper (Playwright)
+          </span>
+        </div>
       </div>
+
+      {/* Error banner */}
+      {scrapeError && (
+        <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/5 p-4 flex items-start gap-3">
+          <AlertCircle className="size-5 text-rose-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-semibold text-sm text-rose-700 dark:text-rose-400">Scraping failed</div>
+            <div className="text-xs text-muted-foreground mt-1">{scrapeError}</div>
+            <div className="text-xs text-muted-foreground mt-2">
+              Common causes: Google rate-limited the sandbox IP, the city/industry had no results,
+              or the headless browser timed out. Try a smaller batch or toggle to mock data.
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearScrapeError}>Dismiss</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Workflow selector */}
@@ -186,26 +227,35 @@ export function GenerateLeads() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate
+                    Leads to Generate {useRealScraper && <span className="text-emerald-600 dark:text-emerald-400">(real scrape — max 50)</span>}
                   </label>
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">35 leads</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
                 <div className="px-1">
-                  <Slider defaultValue={[35]} min={10} max={100} step={5} />
+                  <Slider
+                    value={[leadCount]}
+                    onValueChange={(v) => setLeadCount(v[0])}
+                    min={5}
+                    max={useRealScraper ? 50 : 100}
+                    step={5}
+                  />
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                  <span>10</span><span>25</span><span>50</span><span>75</span><span>100</span>
+                  <span>5</span>
+                  <span>20</span>
+                  <span>35</span>
+                  {useRealScraper ? <span>50</span> : <span>100</span>}
                 </div>
               </div>
 
               <Button
-                onClick={() => runGenerate(35)}
+                onClick={() => runGenerate(leadCount)}
                 disabled={isGenerating}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 h-12 text-base font-semibold"
               >
                 {isGenerating ? (
                   <>
-                    <Loader2 className="size-5 animate-spin" /> Generating…
+                    <Loader2 className="size-5 animate-spin" /> Scraping…
                   </>
                 ) : (
                   <>
@@ -307,7 +357,9 @@ export function GenerateLeads() {
                 )}
                 {!isGenerating && generateProgress === 100 && (
                   <div className="text-emerald-400 font-bold pt-2 border-t border-slate-800 mt-2">
-                    ✓ Done. {35} new leads added to your database.
+                    ✓ Done. {generateLog[generateLog.length - 1]?.includes("Done")
+                      ? generateLog[generateLog.length - 1].replace(/^.*Done\.\s*/, "")
+                      : `${leadCount} leads added`} to your database.
                   </div>
                 )}
               </div>

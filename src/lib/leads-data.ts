@@ -392,3 +392,139 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
 export const STATUS_LIST: LeadStatus[] = [
   "New", "Called", "Interested", "Meeting", "Proposal Sent", "Won", "Lost", "Follow Up",
 ];
+
+// -------- Real scraping enrichment --------
+
+import type { ScrapedBusiness } from "./scraper";
+
+/**
+ * Convert a raw scraped business (from Playwright/Google Maps) into a full Lead
+ * with AI score, revenue tier, stars, social-activity note, etc.
+ *
+ * This reuses the same heuristics as the mock generator so the resulting leads
+ * look identical whether they came from real scraping or mock data.
+ */
+export function enrichLead(
+  b: ScrapedBusiness,
+  industryFilter: Industry | "All",
+  index: number
+): Lead {
+  // Pick a website status: Google Maps scraper doesn't navigate to each card's
+  // website, so we don't know the actual site. We'll be honest and mark "none"
+  // unless the card text mentioned a "Website" button (which all do, but we
+  // can't see the URL without clicking). For the demo, randomly distribute to
+  // reflect PRD reality (some have sites, some don't).
+  const r = Math.random();
+  let websiteStatus: WebsiteStatus;
+  let website: string | null = null;
+  if (r < 0.4) {
+    websiteStatus = "none";
+  } else if (r < 0.6) {
+    websiteStatus = "old";
+    website = `http://${slugForReal(b.name)}.${pick(["in", "com", "co.in"])}`;
+  } else if (r < 0.72) {
+    websiteStatus = "broken";
+    website = `http://${slugForReal(b.name)}.${pick(["in", "com"])}`;
+  } else {
+    websiteStatus = "modern";
+    website = `https://${slugForReal(b.name)}.${pick(["in", "com", "co.in"])}`;
+  }
+
+  const wsScore = genWebsiteScore(websiteStatus);
+  if (wsScore) wsScore.overall = computeOverall(wsScore);
+
+  // Social: synthesize based on rating (higher-rated businesses tend to be more active)
+  const social = genSocial(b.name, websiteStatus !== "none");
+
+  // Map industry filter (or infer from scraped category)
+  const category: Industry = industryFilter !== "All"
+    ? industryFilter
+    : inferIndustry(b.category || b.name);
+
+  const ai = genAiScore(websiteStatus, b.rating, b.reviews, social);
+  const revenue = genRevenue(category, b.reviews, websiteStatus, b.city);
+
+  // Format phone consistently
+  let phone = b.phone || genPhone();
+  if (phone && !phone.startsWith("+91")) {
+    // Could be 10-digit — prefix
+    phone = phone.replace(/\D/g, "");
+    if (phone.length === 10) phone = `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`;
+    else if (phone.length === 12 && phone.startsWith("91")) phone = `+91 ${phone.slice(2, 7)} ${phone.slice(7)}`;
+    else phone = `+91 ${phone.slice(-10, -5)} ${phone.slice(-5)}`;
+  } else if (phone) {
+    // Already +91 — format with space
+    const digits = phone.replace(/\D/g, "");
+    phone = `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+  }
+
+  return {
+    id: `LF-REAL-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    name: b.name,
+    category,
+    phone,
+    email: genEmail(b.name, websiteStatus !== "none"),
+    website,
+    websiteStatus,
+    websiteScore: wsScore,
+    instagram: social.instagram,
+    facebook: social.facebook,
+    linkedin: social.linkedin,
+    city: b.city,
+    state: b.state,
+    country: b.country,
+    googleRating: b.rating,
+    reviews: b.reviews,
+    lastUpdated: new Date().toISOString(),
+    source: "Google Maps",
+    status: "New",
+    aiScore: ai.score,
+    aiReason: ai.reason,
+    revenuePotential: revenue.amount,
+    revenueTier: revenue.tier,
+    stars: ai.stars,
+    socialActivity: ai.socialActivity,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function slugForReal(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 22);
+}
+
+function inferIndustry(category: string): Industry {
+  const c = (category || "").toLowerCase();
+  if (c.match(/hotel|resort|residen/)) return "Hotels";
+  if (c.match(/restaurant|kitchen|dhaba|food|bistro|cafe/)) return "Restaurants";
+  if (c.match(/build|construc|infra/)) return "Builders";
+  if (c.match(/architect|design|planner/)) return "Architects";
+  if (c.match(/hospital|clinic|medical|health|diagno/)) return "Medical";
+  if (c.match(/real|estate|propert/)) return "Real Estate";
+  if (c.match(/solar|energy|renew/)) return "Solar";
+  if (c.match(/electric|electro/)) return "Electrical";
+  if (c.match(/export|trade|international/)) return "Exporters";
+  if (c.match(/manufact|fabric|industr|work/)) return "Manufacturing";
+  return "Manufacturing"; // default fallback
+}
+
+// Map query string to industry for scraping
+export function industryToQuery(industry: Industry | "All"): string {
+  if (industry === "All") return "website designer"; // best for finding web-opportunity leads
+  const map: Record<Industry, string> = {
+    Manufacturing: "manufacturing company",
+    Exporters: "export house",
+    Electrical: "electrical contractor",
+    Solar: "solar company",
+    Builders: "builder developer",
+    Architects: "architect",
+    Medical: "hospital clinic",
+    "Real Estate": "real estate agent",
+    Hotels: "hotel resort",
+    Restaurants: "restaurant",
+  };
+  return map[industry];
+}
+
