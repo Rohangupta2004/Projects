@@ -31,6 +31,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  GitBranch,
+  Zap,
 } from "lucide-react";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -63,6 +65,38 @@ export function PipelineView() {
     leads.length > 0
       ? ((byStatus["Won"].length / leads.length) * 100).toFixed(1)
       : "0";
+
+  // Empty state
+  if (leads.length === 0) {
+    return (
+      <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Sales Pipeline</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Drag leads through your funnel — but first, generate some.
+          </p>
+        </div>
+        <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent">
+          <CardContent className="p-10 lg:p-16 text-center">
+            <div className="size-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-5">
+              <GitBranch className="size-8 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h2 className="text-xl lg:text-2xl font-bold mb-2">Pipeline is empty</h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+              Your CRM has no leads yet. Generate some with the real Playwright scraper to start
+              tracking them through your sales stages.
+            </p>
+            <Button
+              onClick={() => setView("generate")}
+              className="bg-emerald-600 hover:bg-emerald-700 h-11 px-6"
+            >
+              <Zap className="size-4 mr-1.5" /> Generate Leads
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto">

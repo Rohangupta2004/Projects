@@ -43,7 +43,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 
 export function GenerateLeads() {
   const filters = useStore((s) => s.filters);
@@ -53,11 +52,9 @@ export function GenerateLeads() {
   const generateLog = useStore((s) => s.generateLog);
   const runGenerate = useStore((s) => s.runGenerate);
   const leads = useStore((s) => s.leads);
-  const useRealScraper = useStore((s) => s.useRealScraper);
-  const setUseRealScraper = useStore((s) => s.setUseRealScraper);
   const scrapeError = useStore((s) => s.scrapeError);
   const clearScrapeError = useStore((s) => s.clearScrapeError);
-  const [leadCount, setLeadCount] = useState(20);
+  const [leadCount, setLeadCount] = useState(15);
 
   const states = Object.keys(STATE_CITY);
   const cities = STATE_CITY[filters.state] || [];
@@ -79,20 +76,9 @@ export function GenerateLeads() {
             then AI scores each business for website opportunity.
           </p>
         </div>
-        {/* Real / Mock toggle */}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card">
-          <span className={cn("text-xs font-medium", !useRealScraper && "text-muted-foreground")}>
-            Mock data
-          </span>
-          <Switch
-            checked={useRealScraper}
-            onCheckedChange={setUseRealScraper}
-            disabled={isGenerating}
-          />
-          <span className={cn("text-xs font-medium flex items-center gap-1", useRealScraper ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
-            <MapPinned className="size-3" /> Real scraper (Playwright)
-          </span>
-        </div>
+        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+          <MapPinned className="size-3.5 mr-1.5" /> Real scraper · Live data
+        </Badge>
       </div>
 
       {/* Error banner */}
@@ -104,7 +90,7 @@ export function GenerateLeads() {
             <div className="text-xs text-muted-foreground mt-1">{scrapeError}</div>
             <div className="text-xs text-muted-foreground mt-2">
               Common causes: Google rate-limited the sandbox IP, the city/industry had no results,
-              or the headless browser timed out. Try a smaller batch or toggle to mock data.
+              or the headless browser timed out. Try a smaller batch or wait a minute and retry.
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={clearScrapeError}>Dismiss</Button>
@@ -227,7 +213,7 @@ export function GenerateLeads() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Leads to Generate {useRealScraper && <span className="text-emerald-600 dark:text-emerald-400">(real scrape — max 50)</span>}
+                    Leads to Generate (max 30 per scrape)
                   </label>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{leadCount} leads</span>
                 </div>
@@ -236,15 +222,15 @@ export function GenerateLeads() {
                     value={[leadCount]}
                     onValueChange={(v) => setLeadCount(v[0])}
                     min={5}
-                    max={useRealScraper ? 50 : 100}
+                    max={30}
                     step={5}
                   />
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                   <span>5</span>
-                  <span>20</span>
-                  <span>35</span>
-                  {useRealScraper ? <span>50</span> : <span>100</span>}
+                  <span>15</span>
+                  <span>25</span>
+                  <span>30</span>
                 </div>
               </div>
 

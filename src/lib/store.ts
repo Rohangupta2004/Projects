@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import type { GenerateFilters, Lead, LeadStatus, ViewKey, Industry } from "./types";
-import { generateLeads, seedLeads, INDUSTRIES, industryToQuery } from "./leads-data";
+import { INDUSTRIES, industryToQuery } from "./leads-data";
 
 interface LeadForgeState {
   // Navigation
   view: ViewKey;
   setView: (v: ViewKey) => void;
 
-  // Leads
+  // Leads (real only — app starts empty)
   leads: Lead[];
   selectedLeadId: string | null;
   selectLead: (id: string | null) => void;
@@ -21,8 +21,6 @@ interface LeadForgeState {
   generateProgress: number;
   generateLog: string[];
   runGenerate: (count: number) => Promise<void>;
-  useRealScraper: boolean;
-  setUseRealScraper: (v: boolean) => void;
   scrapeError: string | null;
   clearScrapeError: () => void;
 
@@ -51,7 +49,8 @@ export const useStore = create<LeadForgeState>((set, get) => ({
   view: "dashboard",
   setView: (v) => set({ view: v }),
 
-  leads: seedLeads(),
+  // EMPTY on first load — real leads only come from real scraping
+  leads: [],
   selectedLeadId: null,
   selectLead: (id) => set({ selectedLeadId: id }),
   updateLeadStatus: (id, status) =>
@@ -74,57 +73,15 @@ export const useStore = create<LeadForgeState>((set, get) => ({
   isGenerating: false,
   generateProgress: 0,
   generateLog: [],
-  useRealScraper: true,
-  setUseRealScraper: (v) => set({ useRealScraper: v }),
   scrapeError: null,
   clearScrapeError: () => set({ scrapeError: null }),
 
   runGenerate: async (count) => {
     if (get().isGenerating) return;
-    const { filters, useRealScraper } = get();
+    const { filters } = get();
     set({ isGenerating: true, generateProgress: 0, generateLog: [], scrapeError: null });
 
-    if (!useRealScraper) {
-      // Fallback: mock generator (offline / dev mode)
-      const steps = [
-        `Connecting to IndiaMART, Justdial, TradeIndia & ExportersIndia…`,
-        `Scraping ${filters.city}, ${filters.state} (${filters.industry === "All" ? "all industries" : filters.industry})…`,
-        `Resolving phone numbers & emails…`,
-        `Checking websites & social profiles…`,
-        `AI visiting websites & scoring design, speed, SEO, mobile…`,
-        `Pulling Google reviews & ratings…`,
-        `Computing AI priority & Revenue Potential Score…`,
-        `Deduplicating against existing ${get().leads.length} leads…`,
-      ];
-      let i = 0;
-      const interval = setInterval(() => {
-        if (i < steps.length) {
-          set((s) => ({
-            generateLog: [...s.generateLog, steps[i]],
-            generateProgress: Math.round(((i + 1) / steps.length) * 100),
-          }));
-          i++;
-        } else {
-          clearInterval(interval);
-          const newLeads = generateLeads(
-            filters.industry,
-            filters.country,
-            filters.state,
-            filters.city,
-            count
-          );
-          set((s) => ({
-            leads: [...newLeads, ...s.leads],
-            isGenerating: false,
-            generateProgress: 100,
-            view: "leads",
-          }));
-        }
-      }, 480);
-      return;
-    }
-
-    // Real scraper: stream SSE from /api/scrape
+    // Real scraper only — no mock fallback
     const query = industryToQuery(filters.industry);
 
     try {

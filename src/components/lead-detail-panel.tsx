@@ -274,6 +274,26 @@ export function LeadDetailPanel() {
                     ))}
                   </div>
                 </div>
+              ) : lead.website ? (
+                <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Globe className="size-4 text-sky-500" />
+                    <span className="text-sm font-semibold">Website Found</span>
+                    <a
+                      href={lead.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto text-xs text-sky-600 dark:text-sky-400 hover:underline truncate max-w-[200px]"
+                    >
+                      {lead.website}
+                    </a>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    URL scraped from Google Maps. To grade this site (Speed / Design / SEO / Mobile),
+                    run a follow-up audit — would require a second Playwright pass per site.
+                    For now, treat the website's existence as a neutral signal in the AI score.
+                  </p>
+                </div>
               ) : (
                 <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-5">
                   <div className="flex items-center gap-2 mb-2">
@@ -281,7 +301,7 @@ export function LeadDetailPanel() {
                     <span className="text-sm font-semibold">No Website Detected</span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    This business has no online presence beyond directory listings. High-intervention
+                    This business has no online presence beyond Google Maps. High-intervention
                     opportunity — they need a website from scratch. Estimated 7-14 day project, ₹{lead.revenuePotential}K value.
                   </p>
                 </div>

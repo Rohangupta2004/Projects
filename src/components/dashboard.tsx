@@ -112,6 +112,40 @@ export function Dashboard() {
 
   const hotLeads = [...leads].sort((a, b) => b.aiScore - a.aiScore).slice(0, 6);
 
+  // Empty state — no leads yet (app starts empty; only real scraping fills it)
+  if (leads.length === 0) {
+    return (
+      <div className="p-4 lg:p-8 max-w-[1600px] mx-auto">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              AI-powered lead generation — real Playwright scraping of Google Maps + heuristics-based scoring.
+            </p>
+          </div>
+        </div>
+        <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent">
+          <CardContent className="p-10 lg:p-16 text-center">
+            <div className="size-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-5">
+              <Sparkles className="size-8 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h2 className="text-xl lg:text-2xl font-bold mb-2">No leads yet</h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+              Your database is empty. Click <strong>Generate Leads</strong> to launch a real
+              Playwright headless browser that scrapes Google Maps for businesses in your target city.
+            </p>
+            <Button
+              onClick={() => setView("generate")}
+              className="bg-emerald-600 hover:bg-emerald-700 h-11 px-6"
+            >
+              <Zap className="size-4 mr-1.5" /> Generate your first leads
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}

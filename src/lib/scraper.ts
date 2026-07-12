@@ -141,17 +141,14 @@ export async function scrapeGoogleMaps(
         const phone = phoneMatch ? phoneMatch[0].trim() : null;
 
         // Category: usually line[1] or line[2] (after name, before/after rating)
-        // Pattern: "Name\nName\n4.7\nCategory · Address…"
-        // Or: "Name\nName\n4.7\nCategory · ⭐ · Address"
         let category = "";
         let address = "";
         for (const line of lines) {
-          if (line.match(/^\d\.\d$/)) continue; // rating
-          if (line.match(/^\([\d,]+\)$/)) continue; // reviews count
+          if (line.match(/^\d\.\d$/)) continue;
+          if (line.match(/^\([\d,]+\)$/)) continue;
           if (line === phone) continue;
           if (line.match(/Open|Closed|Opens|Closes/)) continue;
           if (line.match(/Website|Directions|Call|Save|Share/)) continue;
-          // The first non-rating, non-action line that contains · or is short
           if (line.includes("·")) {
             const parts = line.split("·").map((s) => s.trim());
             if (!category && parts[0]) category = parts[0];
@@ -162,10 +159,44 @@ export async function scrapeGoogleMaps(
           }
         }
 
-        // Name: first line, but skip duplicates (Google sometimes repeats it)
+        // Name: first line
         let name = lines[0] || "Unknown";
-        if (lines[1] === name && lines.length > 1) {
-          // Google often lists name twice
+
+        // Website link: find an <a> with aria-label containing "Website"
+        // Google Maps cards have a "Website" action button linking to the business's site
+        let website: string | null = null;
+        const links = Array.from(card.querySelectorAll("a"));
+        for (const a of links) {
+          const label = (a.getAttribute("aria-label") || "") as string;
+          const href = a.getAttribute("href") || "";
+          if (label.toLowerCase().includes("website") && href.startsWith("http")) {
+            website = href;
+            break;
+          }
+        }
+        // Fallback: any external link that's not google.com/maps
+        if (!website) {
+          for (const a of links) {
+            const href = a.getAttribute("href") || "";
+            if (
+              href.startsWith("http") &&
+              !href.includes("google.com") &&
+              !href.includes("maps.apple") &&
+              !href.includes("facebook.com") &&
+              !href.includes("instagram.com") &&
+              !href.includes("linkedin.com")
+            ) {
+              website = href;
+              break;
+            }
+          }
+        }
+
+        // Place detail URL (for visiting later if needed)
+        let placeUrl: string | null = null;
+        const titleLink = card.querySelector("a[href*='/maps/place/']");
+        if (titleLink) {
+          placeUrl = titleLink.getAttribute("href");
         }
 
         out.push({
@@ -175,11 +206,76 @@ export async function scrapeGoogleMaps(
           reviews,
           phone,
           address,
+          website,
+          placeUrl,
           raw: text.slice(0, 300),
         });
       }
       return out;
     }, targetCount);
+
+    onProgress?.({
+      step: `Parsed ${raw.length} businesses. Visiting detail pages for website & social data…`,
+      pct: 78,
+      count: raw.length,
+    });
+
+    // Visit each business's place page to grab website + social links if missing
+    // Google Maps place pages have an info panel with "Website", "Facebook", etc.
+    for (let i = 0; i < raw.length; i++) {
+      if (abortSignal?.aborted) throw new Error("aborted");
+      const r = raw[i];
+      // Skip if we already have a website from the card
+      if (r.website) continue;
+      if (!r.placeUrl) continue;
+
+      try {
+        const placePage = await context.newPage();
+        await placePage.goto(r.placeUrl, { timeout: 20000, wait_until: "domcontentloaded" });
+        await placePage.waitForTimeout(2500);
+
+        // Look for the website link on the place page
+        const websiteFromPlace = await placePage.evaluate(() => {
+          const links = Array.from(document.querySelectorAll("a"));
+          for (const a of links) {
+            const label = (a.getAttribute("aria-label") || "") as string;
+            const href = a.getAttribute("href") || "";
+            if (label.toLowerCase().includes("website") && href.startsWith("http") && !href.includes("google.com")) {
+              return href;
+            }
+          }
+          // Fallback: any external non-google link in the info panel
+          for (const a of links) {
+            const href = a.getAttribute("href") || "";
+            if (
+              href.startsWith("http") &&
+              !href.includes("google.com") &&
+              !href.includes("maps.apple") &&
+              !href.includes("facebook.com") &&
+              !href.includes("instagram.com") &&
+              !href.includes("linkedin.com") &&
+              !href.includes("wa.me") &&
+              !href.includes("whatsapp")
+            ) {
+              return href;
+            }
+          }
+          return null;
+        });
+
+        if (websiteFromPlace) {
+          r.website = websiteFromPlace;
+        }
+
+        await placePage.close();
+        onProgress?.({
+          step: `Visited ${i + 1}/${raw.length} place pages…`,
+          pct: 78 + Math.round(((i + 1) / raw.length) * 12),
+        });
+      } catch {
+        // Skip on error — keep what we have
+      }
+    }
 
     onProgress?.({
       step: `Parsed ${raw.length} businesses. Deduplicating…`,
@@ -209,7 +305,7 @@ export async function scrapeGoogleMaps(
       city,
       state,
       country,
-      website: null, // Google Maps hides the actual URL behind a click — would need per-card nav
+      website: r.website || null, // real website URL if found, else null
       source: "Google Maps",
     }));
 

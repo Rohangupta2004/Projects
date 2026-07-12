@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
           city,
           state || "",
           country || "India",
-          Math.min(count || 30, 50),
+          Math.min(count || 15, 30),
           onProgress,
           abortController.signal
         );

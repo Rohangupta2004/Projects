@@ -98,7 +98,7 @@ export function LeadsView() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Leads Database</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {filtered.length} of {leads.length} businesses · live-scraped via Playwright + seeded mock data
+            {filtered.length} of {leads.length} real businesses · live-scraped via Playwright (Google Maps)
           </p>
         </div>
         <Button onClick={() => setView("generate")} className="bg-emerald-600 hover:bg-emerald-700">
@@ -276,17 +276,34 @@ export function LeadsView() {
               {paged.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground">
-                    No leads match your filters.
-                    <Button variant="link" onClick={() => {
-                      setSearch("");
-                      setFilterIndustry("All");
-                      setFilterWebsite("all");
-                      setFilterStatus("All");
-                      setMinReviews(0);
-                      setMaxReviews(500);
-                    }}>
-                      Reset filters
-                    </Button>
+                    {leads.length === 0 ? (
+                      <>
+                        <div className="text-base font-semibold text-foreground mb-1">Your database is empty</div>
+                        <div className="text-sm mb-4">
+                          Generate leads with the real Playwright scraper to populate this table.
+                        </div>
+                        <Button
+                          onClick={() => setView("generate")}
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          Generate Leads
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        No leads match your filters.
+                        <Button variant="link" onClick={() => {
+                          setSearch("");
+                          setFilterIndustry("All");
+                          setFilterWebsite("all");
+                          setFilterStatus("All");
+                          setMinReviews(0);
+                          setMaxReviews(500);
+                        }}>
+                          Reset filters
+                        </Button>
+                      </>
+                    )}
                   </td>
                 </tr>
               )}
