@@ -144,38 +144,50 @@ export async function POST(req: NextRequest) {
           if (withSites.length > 0) {
             send({
               type: "progress",
-              step: `Visiting ${withSites.length} official websites for emails & socials…`,
+              step: `Visiting ${withSites.length} official websites in parallel for emails & socials…`,
               pct: 92,
             });
 
-            // Visit each website (sequentially to avoid rate limits on scrape.do)
-            for (let i = 0; i < withSites.length; i++) {
+            // Visit websites in parallel (batches of 3 to avoid rate limits)
+            const batchSize = 3;
+            for (let batchStart = 0; batchStart < withSites.length; batchStart += batchSize) {
               if (abortController.signal.aborted) throw new Error("aborted");
-              const lead = withSites[i];
+              const batch = withSites.slice(batchStart, batchStart + batchSize);
+              const batchNum = Math.floor(batchStart / batchSize) + 1;
+              const totalBatches = Math.ceil(withSites.length / batchSize);
               send({
                 type: "progress",
-                step: `Enriching ${i + 1}/${withSites.length}: ${lead.name.slice(0, 30)} → ${lead.website?.slice(0, 40)}…`,
-                pct: 92 + Math.round(((i + 1) / withSites.length) * 6),
+                step: `Enriching batch ${batchNum}/${totalBatches} (${batch.length} sites in parallel)…`,
+                pct: 92 + Math.round(((batchStart + batch.length) / withSites.length) * 6),
               });
 
-              try {
-                const enrichment = await enrichWebsite(lead.website!);
-                // Apply enrichment to the lead (in the leads array)
-                leads = leads.map((l) => {
-                  if (l.id !== lead.id) return l;
-                  return {
-                    ...l,
-                    email: enrichment.email || l.email,
-                    facebook: enrichment.facebook || l.facebook,
-                    instagram: enrichment.instagram || l.instagram,
-                    linkedin: enrichment.linkedin || l.linkedin,
-                    websiteStatus: enrichment.websiteStatus,
-                    websiteScore: enrichment.websiteScore,
-                  };
-                });
-              } catch {
-                // Skip on error
-              }
+              // Process this batch in parallel
+              const enrichments = await Promise.allSettled(
+                batch.map((lead) => enrichWebsite(lead.website!))
+              );
+
+              // Apply successful enrichments
+              const enrichmentMap = new Map<string, any>();
+              batch.forEach((lead, i) => {
+                const r = enrichments[i];
+                if (r.status === "fulfilled") {
+                  enrichmentMap.set(lead.id, r.value);
+                }
+              });
+
+              leads = leads.map((l) => {
+                const enr = enrichmentMap.get(l.id);
+                if (!enr) return l;
+                return {
+                  ...l,
+                  email: enr.email || l.email,
+                  facebook: enr.facebook || l.facebook,
+                  instagram: enr.instagram || l.instagram,
+                  linkedin: enr.linkedin || l.linkedin,
+                  websiteStatus: enr.websiteStatus,
+                  websiteScore: enr.websiteScore,
+                };
+              });
             }
 
             send({

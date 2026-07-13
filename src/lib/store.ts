@@ -95,6 +95,18 @@ export const useStore = create<LeadForgeState>((set, get) => ({
     // Real scraper only — no mock fallback
     const query = industryToQuery(filters.industry);
 
+    // Client-side watchdog: if we don't receive any SSE event for 90s, abort
+    let lastEventTime = Date.now();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastEventTime > 90000) {
+        set((s) => ({
+          isGenerating: false,
+          scrapeError: "Scrape stalled — no progress for 90s. The proxy may be overloaded. Try a smaller batch or retry.",
+          generateLog: [...s.generateLog, "✗ Watchdog: no progress for 90s, aborting."],
+        }));
+      }
+    }, 5000);
+
     try {
       const resp = await fetch("/api/scrape", {
         method: "POST",
@@ -112,7 +124,7 @@ export const useStore = create<LeadForgeState>((set, get) => ({
       });
 
       if (!resp.ok || !resp.body) {
-        throw new Error(`HTTP ${resp.status}`);
+        throw new Error(`HTTP ${resp.status}${resp.status === 502 ? " (gateway timeout — the scrape took too long; try fewer leads)" : ""}`);
       }
 
       const reader = resp.body.getReader();
@@ -122,6 +134,7 @@ export const useStore = create<LeadForgeState>((set, get) => ({
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        lastEventTime = Date.now();
         buffer += decoder.decode(value, { stream: true });
 
         // Process complete SSE events (separated by \n\n)
@@ -173,6 +186,8 @@ export const useStore = create<LeadForgeState>((set, get) => ({
         scrapeError: err?.message || "Network error",
         generateLog: [...s.generateLog, `✗ Network error: ${err?.message}`],
       }));
+    } finally {
+      clearInterval(watchdog);
     }
   },
 

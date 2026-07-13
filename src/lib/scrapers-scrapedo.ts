@@ -13,7 +13,7 @@
  */
 import type { DataSource } from "./types";
 
-const SCRAPE_DO_TOKEN = "d0f1e74ac8304145976b9fa52fb58438c5c3e4d4e31";
+const SCRAPE_DO_TOKEN = process.env.SCRAPE_DO_TOKEN || "d0f1e74ac8304145976b9fa52fb58438c5c3e4d4e31";
 
 export interface ScrapedBusiness {
   name: string;
@@ -37,7 +37,7 @@ export interface ScrapeProgress {
 
 async function scrapeDoFetch(
   targetUrl: string,
-  opts: { render?: boolean } = {}
+  opts: { render?: boolean; retries?: number } = {}
 ): Promise<string> {
   const params = new URLSearchParams({
     url: targetUrl,
@@ -46,14 +46,61 @@ async function scrapeDoFetch(
   if (opts.render) params.set("render", "true");
 
   const apiUrl = `https://api.scrape.do/?${params.toString()}`;
-  const resp = await fetch(apiUrl, {
-    method: "GET",
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!resp.ok) {
-    throw new Error(`scrape.do returned HTTP ${resp.status}`);
+  const maxRetries = opts.retries ?? 3;
+  let lastErr: any = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = await fetch(apiUrl, {
+        method: "GET",
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (resp.status === 503 || resp.status === 502 || resp.status === 429) {
+        // Transient scrape.do / target-site errors — retry with backoff
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 800 * attempt));
+          continue;
+        }
+        throw new Error(
+          `scrape.do returned HTTP ${resp.status} after ${maxRetries} retries (target: ${targetUrl.slice(0, 60)})`
+        );
+      }
+
+      if (!resp.ok) {
+        throw new Error(`scrape.do returned HTTP ${resp.status}`);
+      }
+
+      const text = await resp.text();
+      if (!text || text.length < 100) {
+        // Empty / near-empty response — treat as transient
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 800 * attempt));
+          continue;
+        }
+        throw new Error(`scrape.do returned empty body for ${targetUrl.slice(0, 60)}`);
+      }
+
+      return text;
+    } catch (err: any) {
+      lastErr = err;
+      // Network errors / timeouts — retry
+      if (err.name === "TimeoutError" || err.name === "AbortError" ||
+          err.message.includes("fetch failed") || err.message.includes("ECONNRESET")) {
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 800 * attempt));
+          continue;
+        }
+      }
+      // For scrape.do HTTP errors thrown above, also retry if we have attempts left
+      if (err.message?.includes("scrape.do returned") && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 800 * attempt));
+        continue;
+      }
+      throw err;
+    }
   }
-  return await resp.text();
+  throw lastErr || new Error("scrape.do fetch failed");
 }
 
 /**
